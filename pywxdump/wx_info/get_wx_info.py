@@ -13,14 +13,27 @@ import winreg
 import psutil
 import pymem
 from typing import List, Union
-from .utils import pattern_scan_all, verify_key, get_exe_version, get_exe_bit
+from .utils import pattern_scan_all, verify_key, get_exe_version, get_exe_bit, info_error
 
 ReadProcessMemory = ctypes.windll.kernel32.ReadProcessMemory
 void_p = ctypes.c_void_p
 
 
+# 读取内存中的字符串(key部分)
+@info_error
+def get_info_with_key(h_process, address, address_len=8):
+    array = ctypes.create_string_buffer(address_len)
+    if ReadProcessMemory(h_process, void_p(address), array, address_len, 0) == 0: return "None"
+    address = int.from_bytes(array, byteorder='little')  # 逆序转换为int地址（key地址）
+    key = ctypes.create_string_buffer(32)
+    if ReadProcessMemory(h_process, void_p(address), key, 32, 0) == 0: return "None"
+    key_string = bytes(key).hex()
+    return key_string
+
+
 # 读取内存中的字符串(非key部分)
-def get_info_without_key(h_process, address, n_size=64):
+@info_error
+def get_info_string(h_process, address, n_size=64):
     array = ctypes.create_string_buffer(n_size)
     if ReadProcessMemory(h_process, void_p(address), array, n_size, 0) == 0: return "None"
     array = bytes(array).split(b"\x00")[0] if b"\x00" in array else bytes(array)
@@ -28,6 +41,22 @@ def get_info_without_key(h_process, address, n_size=64):
     return text.strip() if text.strip() != "" else "None"
 
 
+# 读取内存中的字符串(昵称部分name)
+@info_error
+def get_info_name(h_process, address, address_len=8, n_size=64):
+    array = ctypes.create_string_buffer(n_size)
+    if ReadProcessMemory(h_process, void_p(address), array, n_size, 0) == 0: return "None"
+    address1 = int.from_bytes(array[:address_len], byteorder='little')  # 逆序转换为int地址（key地址）
+    info_name = get_info_string(h_process, address1, n_size)
+    if info_name != "None":
+        return info_name
+    array = bytes(array).split(b"\x00")[0] if b"\x00" in array else bytes(array)
+    text = array.decode('utf-8', errors='ignore')
+    return text.strip() if text.strip() != "" else "None"
+
+
+# 读取内存中的wxid
+@info_error
 def get_info_wxid(h_process):
     find_num = 100
     addrs = pattern_scan_all(h_process, br'\\Msg\\FTSContact', return_multiple=True, find_num=find_num)
@@ -43,6 +72,8 @@ def get_info_wxid(h_process):
     return wxid
 
 
+# 读取内存中的filePath基于wxid（慢）
+@info_error
 def get_info_filePath_base_wxid(h_process, wxid=""):
     find_num = 10
     addrs = pattern_scan_all(h_process, wxid.encode() + br'\\Msg\\FTSContact', return_multiple=True, find_num=find_num)
@@ -58,7 +89,13 @@ def get_info_filePath_base_wxid(h_process, wxid=""):
     return filePath
 
 
+@info_error
 def get_info_filePath(wxid="all"):
+    """
+    # 读取filePath (微信文件路径) （快）
+    :param wxid: 微信id
+    :return: 返回filePath
+    """
     if not wxid:
         return "None"
     w_dir = "MyDocument:"
@@ -111,7 +148,16 @@ def get_info_filePath(wxid="all"):
     return filePath if os.path.exists(filePath) else "None"
 
 
+@info_error
 def get_key(pid, db_path, addr_len):
+    """
+    获取key （慢）
+    :param pid: 进程id
+    :param db_path: 微信数据库路径
+    :param addr_len: 地址长度
+    :return: 返回key
+    """
+
     def read_key_bytes(h_process, address, address_len=8):
         array = ctypes.create_string_buffer(address_len)
         if ReadProcessMemory(h_process, void_p(address), array, address_len, 0) == 0: return "None"
@@ -154,8 +200,71 @@ def get_key(pid, db_path, addr_len):
     return "None"
 
 
+def get_details(process, version_list: dict = None, is_logging: bool = False):
+    rd = {'pid': process.pid, 'version': get_exe_version(process.exe()),
+          "account": "None", "mobile": "None", "name": "None", "mail": "None",
+          "wxid": "None", "key": "None", "filePath": "None"}
+    try:
+        Handle = ctypes.windll.kernel32.OpenProcess(0x1F0FFF, False, process.pid)
+
+        bias_list = version_list.get(rd['version'], None)
+
+        addrLen = get_exe_bit(process.exe()) // 8
+        if not isinstance(bias_list, list) or len(bias_list) <= 4:
+            error = f"[-] WeChat Current Version Is Not Supported(maybe not get account,mobile,name,mail)"
+            if is_logging: print(error)
+        else:
+            wechat_base_address = 0
+            for module in process.memory_maps(grouped=False):
+                if module.path and 'WeChatWin.dll' in module.path:
+                    wechat_base_address = int(module.addr, 16)
+                    rd['version'] = get_exe_version(module.path) if os.path.exists(module.path) else rd['version']
+                    break
+            if wechat_base_address == 0:
+                error = f"[-] WeChat WeChatWin.dll Not Found"
+                if is_logging: print(error)
+                # return error
+
+            name_baseaddr = wechat_base_address + bias_list[0]
+            account__baseaddr = wechat_base_address + bias_list[1]
+            mobile_baseaddr = wechat_base_address + bias_list[2]
+            mail_baseaddr = wechat_base_address + bias_list[3]
+            key_baseaddr = wechat_base_address + bias_list[4]
+
+            rd['account'] = get_info_string(Handle, account__baseaddr, 32) if bias_list[1] != 0 else "None"
+            rd['mobile'] = get_info_string(Handle, mobile_baseaddr, 64) if bias_list[2] != 0 else "None"
+            rd['name'] = get_info_name(Handle, name_baseaddr, addrLen, 64) if bias_list[0] != 0 else "None"
+            rd['mail'] = get_info_string(Handle, mail_baseaddr, 64) if bias_list[3] != 0 else "None"
+            rd['key'] = get_info_with_key(Handle, key_baseaddr, addrLen) if bias_list[4] != 0 else "None"
+
+        rd['wxid'] = get_info_wxid(Handle)
+
+        rd['filePath'] = get_info_filePath(rd['wxid']) if rd['wxid'] != "None" else "None"
+        if rd['wxid'] != "None" and rd['filePath'] == "None":  # 通过wxid获取filePath,如果filePath为空则通过wxid获取filePath
+            rd['filePath'] = get_info_filePath_base_wxid(Handle, rd['wxid'])
+
+        isKey = verify_key(bytes.fromhex(rd["key"]),
+                           os.path.join(rd['filePath'], "MSG", "MicroMsg.db")) if rd['key'] != "None" and rd[
+            'filePath'] != "None" else False
+        if rd['filePath'] != "None" and rd['key'] == "None" and not isKey:
+            rd['key'] = get_key(rd['pid'], rd['filePath'], addrLen)
+    except Exception as e:
+        error = f"[-] WeChat Get Info Error:{e}"
+        if is_logging: print(error)
+    return rd
+
+
 # 读取微信信息(account,mobile,name,mail,wxid,key)
 def read_info(version_list: dict = None, is_logging: bool = False, save_path: str = None):
+    """
+    读取微信信息(account,mobile,name,mail,wxid,key)
+    :param version_list:  版本偏移量
+    :param is_logging:  是否打印日志
+    :param save_path:  保存路径
+    :return: 返回微信信息 [{"pid": pid, "version": version, "account": account,
+                          "mobile": mobile, "name": name, "mail": mail, "wxid": wxid,
+                          "key": key, "filePath": filePath}, ...]
+    """
     if version_list is None:
         version_list = {}
 
@@ -172,51 +281,8 @@ def read_info(version_list: dict = None, is_logging: bool = False, save_path: st
         return error
 
     for process in wechat_process:
-        tmp_rd = {}
-
-        tmp_rd['pid'] = process.pid
-        tmp_rd['version'] = get_exe_version(process.exe())
-
-        Handle = ctypes.windll.kernel32.OpenProcess(0x1F0FFF, False, process.pid)
-
-        bias_list = version_list.get(tmp_rd['version'], None)
-        if not isinstance(bias_list, list) or len(bias_list) <= 4:
-            error = f"[-] WeChat Current Version Is Not Supported(maybe not get account,mobile,name,mail)"
-            if is_logging: print(error)
-            tmp_rd['account'] = "None"
-            tmp_rd['mobile'] = "None"
-            tmp_rd['name'] = "None"
-            tmp_rd['mail'] = "None"
-        else:
-            wechat_base_address = 0
-            for module in process.memory_maps(grouped=False):
-                if module.path and 'WeChatWin.dll' in module.path:
-                    wechat_base_address = int(module.addr, 16)
-                    break
-            if wechat_base_address == 0:
-                error = f"[-] WeChat WeChatWin.dll Not Found"
-                if is_logging: print(error)
-                # return error
-
-            name_baseaddr = wechat_base_address + bias_list[0]
-            account__baseaddr = wechat_base_address + bias_list[1]
-            mobile_baseaddr = wechat_base_address + bias_list[2]
-            mail_baseaddr = wechat_base_address + bias_list[3]
-            # key_baseaddr = wechat_base_address + bias_list[4]
-
-            tmp_rd['account'] = get_info_without_key(Handle, account__baseaddr, 32) if bias_list[1] != 0 else "None"
-            tmp_rd['mobile'] = get_info_without_key(Handle, mobile_baseaddr, 64) if bias_list[2] != 0 else "None"
-            tmp_rd['name'] = get_info_without_key(Handle, name_baseaddr, 64) if bias_list[0] != 0 else "None"
-            tmp_rd['mail'] = get_info_without_key(Handle, mail_baseaddr, 64) if bias_list[3] != 0 else "None"
-
-        addrLen = get_exe_bit(process.exe()) // 8
-
-        tmp_rd['wxid'] = get_info_wxid(Handle)
-        tmp_rd['filePath'] = get_info_filePath_base_wxid(Handle, tmp_rd['wxid']) if tmp_rd['wxid'] != "None" else "None"
-        tmp_rd['filePath'] = get_info_filePath(tmp_rd['wxid']) if tmp_rd['wxid'] != "None" and tmp_rd[
-            'filePath'] == "None" else tmp_rd['filePath']
-        tmp_rd['key'] = get_key(tmp_rd['pid'], tmp_rd['filePath'], addrLen) if tmp_rd['filePath'] != "None" else "None"
-        result.append(tmp_rd)
+        rd = get_details(process, version_list, is_logging)
+        result.append(rd)
 
     if is_logging:
         print("=" * 32)
@@ -332,7 +398,7 @@ def get_core_db(wx_path: str, db_type: list = None) -> [str]:
     """
     if not os.path.exists(wx_path):
         return False, f"[-] 目录不存在: {wx_path}"
-    db_type_all = ["MSG", "MediaMSG", "MicroMsg", "OpenIMContact", "OpenIMMedia", "OpenIMMsg"]
+    db_type_all = ["MSG", "MediaMSG", "MicroMsg", "OpenIMContact", "OpenIMMedia", "OpenIMMsg", "Favorite"]
 
     if not db_type:
         db_type = db_type_all

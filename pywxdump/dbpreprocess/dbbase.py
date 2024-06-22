@@ -12,11 +12,13 @@ import logging
 
 class DatabaseBase:
     _singleton_instances = {}  # 使用字典存储不同db_path对应的单例实例
+    _connection_pool = {}  # 使用字典存储不同db_path对应的连接池
+    _class_name = "DatabaseBase"
 
     def __new__(cls, db_path):
-        if db_path not in cls._singleton_instances:
-            cls._singleton_instances[db_path] = super().__new__(cls)
-        return cls._singleton_instances[db_path]
+        if cls._class_name not in cls._singleton_instances:
+            cls._singleton_instances[cls._class_name] = super().__new__(cls)
+        return cls._singleton_instances[cls._class_name]
 
     def __init__(self, db_path):
         self._db_path = db_path
@@ -26,11 +28,19 @@ class DatabaseBase:
     def _connect_to_database(cls, db_path):
         if not os.path.exists(db_path):
             raise FileNotFoundError(f"文件不存在: {db_path}")
+        if db_path in cls._connection_pool and cls._connection_pool[db_path] is not None:
+            return cls._connection_pool[db_path]
         connection = sqlite3.connect(db_path, check_same_thread=False)
         logging.info(f"{connection} 连接句柄创建 {db_path}")
         return connection
 
     def execute_sql(self, sql, params=None):
+        """
+        执行SQL语句
+        :param sql: SQL语句 (str)
+        :param params: 参数 (tuple)
+        :return: 查询结果 (list)
+        """
         # 检测数据库连接是否关闭
         if not self._db_connection:
             logging.warning(f"重新连接数据库 - {self._db_path}")
@@ -65,12 +75,19 @@ class DatabaseBase:
             logging.info(f"关闭数据库 - {self._db_path}")
             self._db_connection = None
 
+    def close_all_connection(self):
+        for db_path in self._connection_pool:
+            if self._connection_pool[db_path]:
+                self._connection_pool[db_path].close()
+                logging.info(f"关闭数据库 - {db_path}")
+                self._connection_pool[db_path] = None
+
     def show__singleton_instances(self):
         print(self._singleton_instances)
 
     def __del__(self):
         self.close_connection()
-        del self._singleton_instances[self._db_path]
+        # del self._singleton_instances[self._db_path]
 
 
 if __name__ == '__main__':

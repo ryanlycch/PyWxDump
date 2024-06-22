@@ -6,6 +6,7 @@
 # Date:         2024/04/15
 # -------------------------------------------------------------------------------
 import hashlib
+import os
 import re
 import time
 import wave
@@ -14,6 +15,76 @@ import requests
 from io import BytesIO
 import pysilk
 import lxml.etree as ET  # 这个模块更健壮些，微信XML格式有时有非标格式，会导致xml.etree.ElementTree处理失败
+from collections import defaultdict
+
+
+def type_converter(type_id_or_name: [str, tuple]):
+    """
+    消息类型ID与名称转换
+    名称(str)=>ID(tuple)
+    ID(tuple)=>名称(str)
+    :param type_id_or_name: 消息类型ID或名称
+    :return: 消息类型ID或名称
+    """
+    type_name_dict = defaultdict(lambda: "未知", {
+        (1, 0): "文本",
+        (3, 0): "图片",
+        (34, 0): "语音",
+        (37, 0): "添加好友",
+        (42, 0): "推荐公众号",
+        (43, 0): "视频",
+        (47, 0): "动画表情",
+        (48, 0): "位置",
+
+        (49, 0): "文件",
+        (49, 1): "粘贴的文本",
+        (49, 3): "(分享)音乐",
+        (49, 4): "(分享)卡片式链接",
+        (49, 5): "(分享)卡片式链接",
+        (49, 6): "文件",
+        (49, 7): "游戏相关",
+        (49, 8): "用户上传的GIF表情",
+        (49, 15): "未知-49,15",
+        (49, 17): "位置共享",
+        (49, 19): "合并转发的聊天记录",
+        (49, 24): "(分享)笔记",
+        (49, 33): "(分享)小程序",
+        (49, 36): "(分享)小程序",
+        (49, 40): "(分享)收藏夹",
+        (49, 44): "(分享)小说(猜)",
+        (49, 50): "(分享)视频号名片",
+        (49, 51): "(分享)视频号视频",
+        (49, 53): "接龙",
+        (49, 57): "引用回复",
+        (49, 63): "视频号直播或直播回放",
+        (49, 74): "文件(猜)",
+        (49, 87): "群公告",
+        (49, 88): "视频号直播或直播回放等",
+        (49, 2000): "转账",
+        (49, 2003): "赠送红包封面",
+
+        (50, 0): "语音通话",
+        (65, 0): "企业微信打招呼(猜)",
+        (66, 0): "企业微信添加好友(猜)",
+
+        (10000, 0): "系统通知",
+        (10000, 1): "消息撤回1",
+        (10000, 4): "拍一拍",
+        (10000, 5): "消息撤回5",
+        (10000, 6): "消息撤回6",
+        (10000, 33): "消息撤回33",
+        (10000, 36): "消息撤回36",
+        (10000, 57): "消息撤回57",
+        (10000, 8000): "邀请加群",
+        (11000, 0): "未知-11000,0"
+    })
+
+    if isinstance(type_id_or_name, tuple):
+        return type_name_dict[type_id_or_name]
+    elif isinstance(type_id_or_name, str):
+        return next((k for k, v in type_name_dict.items() if v == type_id_or_name), (0, 0))
+    else:
+        raise ValueError("Invalid input type")
 
 
 def typeid2name(type_id: tuple):
@@ -22,90 +93,16 @@ def typeid2name(type_id: tuple):
     :param type_id: 消息类型ID 元组 eg: (1, 0)
     :return:
     """
-    type_name_dict = {
-        (1, 0): "文本",
-        (3, 0): "图片",
-        (34, 0): "语音",
-        (43, 0): "视频",
-        (47, 0): "动画表情",
-
-        (37, 0): "添加好友",  # 感谢 https://github.com/zhyc9de
-        (42, 0): "推荐公众号",  # 感谢 https://github.com/zhyc9de
-        (48, 0): "地图信息",  # 感谢 https://github.com/zhyc9de
-        (49, 40): "分享收藏夹",  # 感谢  https://github.com/zhyc9de
-        (49, 53): "接龙",  # 感谢  https://github.com/zhyc9de
-
-        (49, 0): "文件",
-        (49, 1): "类似文字消息而不一样的消息",
-        (49, 5): "卡片式链接",
-        (49, 6): "文件",
-        (49, 8): "用户上传的GIF表情",
-        (49, 19): "合并转发的聊天记录",
-        (49, 33): "分享的小程序",
-        (49, 36): "分享的小程序",
-        (49, 57): "带有引用的文本消息",
-        (49, 63): "视频号直播或直播回放等",
-        (49, 87): "群公告",
-        (49, 88): "视频号直播或直播回放等",
-        (49, 2000): "转账消息",
-        (49, 2003): "赠送红包封面",
-
-        (50, 0): "语音通话",
-        (10000, 0): "系统通知",
-        (10000, 4): "拍一拍",
-        (10000, 8000): "系统通知"
-    }
-
-    if type_id in type_name_dict:
-        return type_name_dict[type_id]
-    else:
-        return "未知"
+    return type_converter(type_id)
 
 
 def name2typeid(type_name: str):
     """
-    获取消息类型名称
-    :param type_id: 消息类型ID 元组 eg: (1, 0)
+    获取消息类型ID
+    :param type_name: 消息类型名称
     :return:
     """
-    type_name_dict = {
-        (1, 0): "文本",
-        (3, 0): "图片",
-        (34, 0): "语音",
-        (43, 0): "视频",
-        (47, 0): "动画表情",
-
-        (37, 0): "添加好友",  # 感谢 https://github.com/zhyc9de
-        (42, 0): "推荐公众号",  # 感谢 https://github.com/zhyc9de
-        (48, 0): "地图信息",  # 感谢 https://github.com/zhyc9de
-        (49, 40): "分享收藏夹",  # 感谢  https://github.com/zhyc9de
-        (49, 53): "接龙",  # 感谢  https://github.com/zhyc9de
-
-        (49, 0): "文件",
-        (49, 1): "类似文字消息而不一样的消息",
-        (49, 5): "卡片式链接",
-        (49, 6): "文件",
-        (49, 8): "用户上传的GIF表情",
-        (49, 19): "合并转发的聊天记录",
-        (49, 33): "分享的小程序",
-        (49, 36): "分享的小程序",
-        (49, 57): "带有引用的文本消息",
-        (49, 63): "视频号直播或直播回放等",
-        (49, 87): "群公告",
-        (49, 88): "视频号直播或直播回放等",
-        (49, 2000): "转账消息",
-        (49, 2003): "赠送红包封面",
-
-        (50, 0): "语音通话",
-        (10000, 0): "系统通知",
-        (10000, 4): "拍一拍",
-        (10000, 8000): "系统通知"
-    }
-    type_tup = []
-    for k, v in type_name_dict.items():
-        if v == type_name:
-            type_tup.append(k)
-    return type_tup
+    return type_converter(type_name)
 
 
 def get_md5(data):
@@ -120,6 +117,20 @@ def timestamp2str(timestamp):
     :param timestamp: 时间戳
     :return: 时间字符串
     """
+    if isinstance(timestamp, str) and timestamp.isdigit():
+        timestamp = int(timestamp)
+    elif isinstance(timestamp, int) or isinstance(timestamp, float):
+        pass
+    else:
+        return timestamp
+
+    if len(str(timestamp)) == 13:
+        timestamp = timestamp / 1000
+    elif len(str(timestamp)) == 10:
+        pass
+    else:
+        return timestamp
+
     return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(timestamp))
 
 
@@ -238,6 +249,9 @@ def download_file(url, save_path=None):
         return None
     data = r.content
     if save_path and isinstance(save_path, str):
+        # 创建文件夹
+        if not os.path.exists(os.path.dirname(save_path)):
+            os.makedirs(os.path.dirname(save_path))
         with open(save_path, "wb") as f:
             f.write(data)
     return data
@@ -334,6 +348,8 @@ def silk2audio(buf_data, is_play=False, is_wave=False, save_path=None, rate=2400
 
         play_audio(pcm_data, rate)
 
+    print(is_play, is_wave, save_path)
+
     if is_wave:  # 转换为wav文件
         wave_file = BytesIO()  # 创建wav文件
         with wave.open(wave_file, 'wb') as wf:
@@ -344,6 +360,7 @@ def silk2audio(buf_data, is_play=False, is_wave=False, save_path=None, rate=2400
         if save_path and isinstance(save_path, str):
             with open(save_path, "wb") as f:
                 f.write(rdata)
+            print('saved wav file')
         return rdata
 
     return pcm_data

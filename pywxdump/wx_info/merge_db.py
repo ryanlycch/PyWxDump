@@ -5,13 +5,14 @@
 # Author:       xaoyaoo
 # Date:         2023/12/03
 # -------------------------------------------------------------------------------
+import logging
 import os
 import random
 import shutil
 import sqlite3
 import subprocess
 import time
-
+from typing import List
 
 def merge_copy_db(db_path, save_path):
     if isinstance(db_path, list) and len(db_path) == 1:
@@ -216,7 +217,14 @@ def merge_db(db_paths, save_path="merge.db", CreateTime: int = 0, endCreateTime:
         # alias, file_path
         databases = {f"MSG{i}": db_path for i, db_path in enumerate(db_paths)}
     elif isinstance(db_paths, str):
-        databases = {"MSG": db_paths}
+        # 判断是否是文件or文件夹
+        if os.path.isdir(db_paths):
+            db_paths = [os.path.join(db_paths, i) for i in os.listdir(db_paths) if i.endswith(".db")]
+            databases = {f"MSG{i}": db_path for i, db_path in enumerate(db_paths)}
+        elif os.path.isfile(db_paths):
+            databases = {"MSG": db_paths}
+        else:
+            raise FileNotFoundError("db_paths 不存在")
     else:
         raise TypeError("db_paths 类型错误")
 
@@ -228,63 +236,72 @@ def merge_db(db_paths, save_path="merge.db", CreateTime: int = 0, endCreateTime:
         # 获取表名
         sql = f"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;"
         tables = execute_sql(db, sql)
-        for table in tables:
-            table = table[0]
-            if table == "sqlite_sequence":
-                continue
-            # 获取表中的字段名
-            sql = f"PRAGMA table_info({table})"
-            columns = execute_sql(db, sql)
-            col_type = {
-                (i[1] if isinstance(i[1], str) else i[1].decode(), i[2] if isinstance(i[2], str) else i[2].decode()) for
-                i in columns}
-            columns = [i[1] if isinstance(i[1], str) else i[1].decode() for i in columns]
-            if not columns or len(columns) < 1:
-                continue
+        try:
+            for table in tables:
+                table = table[0]
+                if table == "sqlite_sequence":
+                    continue
+                # 获取表中的字段名
+                sql = f"PRAGMA table_info({table})"
+                columns = execute_sql(db, sql)
+                if not columns or len(columns) < 1:
+                    continue
+                col_type = {
+                    (i[1] if isinstance(i[1], str) else i[1].decode(), i[2] if isinstance(i[2], str) else i[2].decode())
+                    for
+                    i in columns}
+                columns = [i[1] if isinstance(i[1], str) else i[1].decode() for i in columns]
+                if not columns or len(columns) < 1:
+                    continue
 
-            # 检测表是否存在
-            sql = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"
-            out_cursor.execute(sql)
-            if len(out_cursor.fetchall()) < 1:
-                # 创建表
-                # 拼接创建表的SQL语句
-                column_definitions = []
-                for column in col_type:
-                    column_name = column[0] if isinstance(column[0], str) else column[0].decode()
-                    column_type = column[1] if isinstance(column[1], str) else column[1].decode()
-                    column_definition = f"{column_name} {column_type}"
-                    column_definitions.append(column_definition)
-                sql = f"CREATE TABLE IF NOT EXISTS {table} ({','.join(column_definitions)})"
-                # sql = f"CREATE TABLE IF NOT EXISTS {table} ({','.join(columns)})"
+                # 检测表是否存在
+                sql = f"SELECT name FROM sqlite_master WHERE type='table' AND name='{table}'"
                 out_cursor.execute(sql)
+                if len(out_cursor.fetchall()) < 1:
+                    # 创建表
+                    # 拼接创建表的SQL语句
+                    column_definitions = []
+                    for column in col_type:
+                        column_name = column[0] if isinstance(column[0], str) else column[0].decode()
+                        column_type = column[1] if isinstance(column[1], str) else column[1].decode()
+                        column_definition = f"{column_name} {column_type}"
+                        column_definitions.append(column_definition)
+                    sql = f"CREATE TABLE IF NOT EXISTS {table} ({','.join(column_definitions)})"
+                    # sql = f"CREATE TABLE IF NOT EXISTS {table} ({','.join(columns)})"
+                    out_cursor.execute(sql)
 
-                # 创建包含 NULL 值比较的 UNIQUE 索引
-                index_name = f"{table}_unique_index"
-                coalesce_columns = ','.join(f"COALESCE({column}, '')" for column in columns)  # 将 NULL 值转换为 ''
-                sql = f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} ({coalesce_columns})"
-                out_cursor.execute(sql)
+                    # 创建包含 NULL 值比较的 UNIQUE 索引
+                    index_name = f"{table}_unique_index"
+                    coalesce_columns = ','.join(f"COALESCE({column}, '')" for column in columns)  # 将 NULL 值转换为 ''
+                    sql = f"CREATE UNIQUE INDEX IF NOT EXISTS {index_name} ON {table} ({coalesce_columns})"
+                    out_cursor.execute(sql)
 
-            # 获取表中的数据
-            if "CreateTime" in columns and CreateTime > 0:
-                sql = f"SELECT {','.join([i[0] for i in col_type])} FROM {table} WHERE CreateTime>? ORDER BY CreateTime"
-                src_data = execute_sql(db, sql, (CreateTime,))
-            else:
-                sql = f"SELECT {','.join([i[0] for i in col_type])} FROM {table}"
-                src_data = execute_sql(db, sql)
-            if not src_data or len(src_data) < 1:
-                continue
-            # 插入数据
-            sql = f"INSERT OR IGNORE INTO {table} ({','.join([i[0] for i in col_type])}) VALUES ({','.join(['?'] * len(columns))})"
-            out_cursor.executemany(sql, src_data)
-            outdb.commit()
+                # 获取表中的数据
+                if "CreateTime" in columns and CreateTime > 0:
+                    sql = f"SELECT {','.join([i[0] for i in col_type])} FROM {table} WHERE CreateTime>? ORDER BY CreateTime"
+                    src_data = execute_sql(db, sql, (CreateTime,))
+                else:
+                    sql = f"SELECT {','.join([i[0] for i in col_type])} FROM {table}"
+                    src_data = execute_sql(db, sql)
+                if not src_data or len(src_data) < 1:
+                    continue
+                # 插入数据
+                sql = f"INSERT OR IGNORE INTO {table} ({','.join([i[0] for i in col_type])}) VALUES ({','.join(['?'] * len(columns))})"
+                try:
+                    out_cursor.executemany(sql, src_data)
+                except Exception as e:
+                    logging.error(f"error: {alias}\n{table}\n{sql}\n{src_data}\n{len(src_data)}\n{e}\n**********")
+                outdb.commit()
+        except Exception as e:
+            logging.error(f"fun(merge_db) error: {alias}\n{e}\n**********")
         db.close()
     outdb.close()
     return save_path
 
 
-def decrypt_merge(wx_path, key, outpath="", CreateTime: int = 0, endCreateTime: int = 0) -> (bool, str):
+def decrypt_merge(wx_path, key, outpath="", CreateTime: int = 0, endCreateTime: int = 0, db_type: List[str] = []) -> (bool, str):
     """
-    解密合并数据库 msg.db, microMsg.db, media.db
+    解密合并数据库 msg.db, microMsg.db, media.db,注意：会删除原数据库
     :param wx_path: 微信路径 eg: C:\*******\WeChat Files\wxid_*********
     :param key: 解密密钥
     :return: (true,解密后的数据库路径) or (false,错误信息)
@@ -302,10 +319,17 @@ def decrypt_merge(wx_path, key, outpath="", CreateTime: int = 0, endCreateTime: 
     # 分割wx_path的文件名和父目录
     msg_dir = os.path.dirname(wx_path)
     my_wxid = os.path.basename(wx_path)
-
+    db_type_set: set[str] = {"MSG", "MediaMSG", "MicroMsg", "OpenIMContact", "OpenIMMedia", "OpenIMMsg", "Favorite"}
+    if len(db_type) == 0:
+        db_type = list(db_type_set)
+    else:
+        for i in db_type:
+            if i not in db_type_set:
+                return False, f"db_type参数错误, 可用选项 {db_type_set}"
     # 解密
-    code, wxdbpaths = get_core_db(wx_path, ["MSG", "MediaMSG", "MicroMsg", "OpenIMContact", "OpenIMMedia", "OpenIMMsg"])
-
+    code, wxdbpaths = get_core_db(wx_path, db_type)
+    if not code:
+        return False, wxdbpaths
     # 判断out_path是否为空目录
     if os.path.exists(decrypted_path) and os.listdir(decrypted_path):
         for root, dirs, files in os.walk(decrypted_path, topdown=False):
@@ -326,9 +350,14 @@ def decrypt_merge(wx_path, key, outpath="", CreateTime: int = 0, endCreateTime: 
     for code1, ret1 in ret:
         if code1:
             out_dbs.append(ret1[1])
-
-    parpare_merge_db_path = [i for i in out_dbs if
-                             "de_MicroMsg" in i or "de_MediaMSG" in i or "de_MSG" in i or "de_OpenIMMsg" in i or "de_OpenIMMedia" in i or "de_OpenIMContact" in i]
+    parpare_merge_db_path = []
+    for i in out_dbs:
+        for j in db_type:
+            if j in i:
+                parpare_merge_db_path.append(i)
+                break
+    de_db_type = [f"de_{i}" for i in db_type]
+    parpare_merge_db_path = [i for i in out_dbs if any(keyword in i for keyword in de_db_type)]
 
     merge_save_path = merge_db(parpare_merge_db_path, merge_save_path, CreateTime=CreateTime,
                                endCreateTime=endCreateTime)
@@ -389,4 +418,29 @@ def merge_real_time_db(key, db_path: str, merge_path: str, CreateTime: int = 0, 
         time.sleep(3)
         os.remove(out_path)
 
-    return merge_path
+    return True, merge_path
+
+
+def all_merge_real_time_db(key, wx_path, merge_path):
+    """
+    合并所有实时数据库
+    注：这是全量合并，会有可能产生重复数据，需要自行去重
+    :param key:  解密密钥
+    :param wx_path:  微信路径
+    :param merge_path:  合并后的数据库路径 eg: C:\*******\WeChat Files\wxid_*********\merge.db
+    :return:
+    """
+    if not merge_path or not key or not wx_path or not wx_path:
+        return False, "msg_path or media_path or wx_path or key is required"
+    try:
+        from pywxdump import get_core_db
+    except ImportError:
+        return False, "未找到模块 pywxdump"
+
+    db_paths = get_core_db(wx_path, ["MediaMSG", "MSG", "MicroMsg"])
+    if not db_paths[0]:
+        return False, db_paths[1]
+    db_paths = db_paths[1]
+    for i in db_paths:
+        merge_real_time_db(key=key, db_path=i, merge_path=merge_path)
+    return True, merge_path

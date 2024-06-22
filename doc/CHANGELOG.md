@@ -1,11 +1,234 @@
-## v2.4.71.(待发布)
+## v3.0.36.(待发布)
 
+- UPDATE CHANGELOG.md
+
+## v3.0.35
+
+- fix 部分表情无法显示
+
+## v3.0.34
+
+- fix
+- (49, 2000): "转账",
+- UPDATE CHANGELOG.md
+
+## v3.0.33
+
+- fix
+- UPDATE CHANGELOG.md
+
+## v3.0.32
+
+- 使用本地设置，增加选项
+
+## v3.0.31
+
+- fix bug
+- UPDATE CHANGELOG.md
+
+## v3.0.30
+
+- 位置显示支持
+- 消息类型统一处理
+- 转账消息更加明确
+- 增加更多消息类型的说明
+- UPDATE CHANGELOG.md
+- get_BytesExtra 数据类型增加其他处理
+
+## v3.0.29
+
+- wx 3.9.11.17支持
+- user_list_by_label
+- UPDATE CHANGELOG.md
+
+## v3.0.28
+
+- 修复打包问题
+- 增加联系人标签显示
+- UPDATE CHANGELOG.md
+- get info add decorator info_error
+
+## v3.0.27
+
+- fix
+- 增加容错
+- fix 浏览器打开参数
+
+## v3.0.26
+
+- fix
+- fix test
+
+## v3.0.25
+
+- fix
+- fix Favorite
+- fix wx 3.9.10.27
+- feat: 数据库合并与查询优化 (#97)
+- fix: fix bug on cli dbshow command (#96)
+- Merge branch 'master' of github.com:xaoyaoo/PyWxDump
+
+## v3.0.24
+
+- 增加说明
+- 增加收藏夹的库
+- UPDATE CHANGELOG.md
+
+## v3.0.23
+
+- fix
+- 增加注释
+- 更新DOC
+- 增加注释方便使用
+- 增加收藏数据库解析
+- 准备添加收藏数据库解析
+
+## v3.0.22
+
+- fix
+- 修改获取name的逻辑
+- 增加依赖库pandas
+- fix dbshow 命令
+- UPDATE CHANGELOG.md
+
+## v3.0.21
+
+- fix
+- fix 增加容错 #93
+
+## v3.0.20
+
+- fix 合并实时数据库的函数在路径名中有中文时会报错 #92
+
+## v3.0.19
+
+- fix
+- 更新FAQ
+- 加快info的获取速度
+- UPDATE CHANGELOG.md
+- 优化代码，增加name获取的容错 #94
+
+## v3.0.18
+
+- 修复无法自动解密（解密报错的问题）
+- UPDATE CHANGELOG.md
+
+## v3.0.17
+
+- 修复无法自动解密（解密报错的问题）
+
+## v3.0.16
+
+- 更新文档
+- 格式化代码
+- 优化命令说明
+- 更新说明文件
+- 废弃命令增加说明
+- 增加合并全部数据库的命令
+- UPDATE CHANGELOG.md
+
+## v3.0.15
+
+- 增加合并数据库的容错
+- (backup/master) 增加合并数据库的容错
+
+## v3.0.14
+
+- fix auto无法使用的问题。
+
+## v3.0.13
+
+- test 聊天记录分析
+- fix 无法auto无法使用的问题。
+
+## v3.0.12
+
+- 调整显示样式
+- 增加数据展示的包
+- 更新 FAQ.md
+- 更新 UserGuide.md
+- UPDATE CHANGELOG.md
+
+## v3.0.11
+
+- fix
+- 清理代码
+- 清理微信存储空间核心代码
+- 更新 README_CN.md
+- 更新 README_EN.md
+- 清理已经废弃的代码（可能会存在有用代码被清除）
+
+## v3.0.10
+
+- fix
+- fix 部分错误
+- 删除部分命令行不可用命令
+
+## v3.0.8
+
+- fix
+
+## v3.0.7
+
+- 重构导出
+- 重构导出csv
+- 重构导出json
+- 增加获取群备注的功能
+- 增加数据库查询失败的容错
+- UPDATE CHANGELOG.md
+- OpenIMContact表中不到的问题
+
+## v3.0.6
+
+- fix
+
+## v3.0.5
+
+- fix
+- fix 数据库合并的问题
+- UI 偏移地址获取 fix
+- UPDATE README.md
+
+## v3.0.4
+
+- fix
+
+## v3.0.3
+
+- fix
+
+## v3.0.2
+
+- fix
+
+## v3.0.1
+
+- fix
+- 优化代码
+- 增加注释
+- UPDATE README.md
+- UPDATE CHANGELOG.md
+
+## v3.0.0
+
+- 加速访问，增加容错merge
+- 重构大部分API，响应速度翻倍
+- UPDATE CHANGELOG.md
+- 加快数据库访问速度，同时独立处理每一个数据库
+- 增加新的使用方法，加快访问速度，合并相似的功能
+
+## v2.4.71
+
+- fix
+- 完善注释
 - 修改数据库匹配规则
 - 增加3.9.10.19支持
 - fix 图片优先显示清晰版本
+- 增加UI选项是否自动打开浏览器
 - UPDATE README.md
 - 读取ExtraBuf（联系人表）
 - fix 部分情况下视频不能正常显示
+- UPDATE CHANGELOG.md
 - MSG数量超过10个无法获取最新数据的bug
 
 ## v2.4.70
@@ -31,7 +254,7 @@
 - 优化 decryption.py
 - UPDATE CHANGELOG.md
 - 数据库连接方式改为共用连接，降低时间开销
-- (backup/master) 添加编码# -*- coding:utf-8 -*-
+- 添加编码# -*- coding:utf-8 -*-
 
 ## v2.4.60
 

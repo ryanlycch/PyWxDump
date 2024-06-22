@@ -27,6 +27,7 @@ install_requires = [
     "blackboxprotobuf",
     "lxml",
     "flask_cors",
+    "pandas",
 ]
 
 setup(
@@ -40,12 +41,15 @@ setup(
     url="https://github.com/xaoyaoo/PyWxDump",
     license='MIT',
 
-    packages=['pywxdump', 'pywxdump.ui', 'pywxdump.wx_info', 'pywxdump.analyzer', 'pywxdump.api'],
+    packages=['pywxdump', 'pywxdump.ui', 'pywxdump.wx_info', 'pywxdump.analyzer', 'pywxdump.api',
+              'pywxdump.dbpreprocess', 'pywxdump.dbpreprocess.export'],
     package_dir={'pywxdump': 'pywxdump',
                  'pywxdump.wx_info': 'pywxdump/wx_info',
                  'pywxdump.analyzer': 'pywxdump/analyzer',
                  'pywxdump.ui': 'pywxdump/ui',
                  'pywxdump.api': 'pywxdump/api',
+                 'pywxdump.dbpreprocess': 'pywxdump/dbpreprocess',
+                 'pywxdump.dbpreprocess.export': 'pywxdump/dbpreprocess/export'
                  },
 
     package_data={
